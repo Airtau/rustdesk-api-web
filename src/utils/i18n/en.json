@@ -206,6 +206,9 @@
   "System": {
     "One": "System"
   },
+  "Connections": {
+    "One": "Connections"
+  },
   "PeerManage": {
     "One": "Peers"
   },
@@ -531,5 +534,39 @@
   },
   "Remark": {
     "One": "Remark"
+  },
+  "ActiveConnections": {
+    "One": "Active Connections (Usage)"
+  },
+  "Refresh": {
+    "One": "Refresh"
+  },
+  "IP": {
+    "One": "IP"
+  },
+  "Time": {
+    "One": "Time"
+  },
+  "Total": {
+    "One": "Total (MB)"
+  },
+  "MaxSpeed": {
+    "One": "Max Speed"
+  },
+  "AvgSpeed": {
+    "One": "Avg Speed"
+  },
+  "CurrentSpeed": {
+    "One": "Current Speed"
+  },
+  "NoActiveConnections": {
+    "One": "No active connections"
+  },
+  "DataUpdated": {
+    "One": "Data updated"
+  },
+  "DataLoadError": {
+    "One": "Error loading data"
   }
 }
+

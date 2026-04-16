@@ -209,6 +209,9 @@
   "System": {
     "One": "Système"
   },
+  "Connections": {
+    "One": "Connexions" 
+  },
   "PeerManage": {
     "One": "Appareils"
   },
@@ -534,5 +537,38 @@
   },
   "Remark": {
     "One": "Remarque"
+  },
+  "ActiveConnections": {
+    "One": "Connexions actives (Utilisation)"
+  },
+  "Refresh": {
+    "One": "Actualiser"
+  },
+  "IP": {
+    "One": "IP"
+  },
+  "Time": {
+    "One": "Heure"
+  },
+  "Total": {
+    "One": "Total (Mo)"
+  },
+  "MaxSpeed": {
+    "One": "Vitesse max"
+  },
+  "AvgSpeed": {
+    "One": "Vitesse moy"
+  },
+  "CurrentSpeed": {
+    "One": "Vitesse actuelle"
+  },
+  "NoActiveConnections": {
+    "One": "Aucune connexion active"
+  },
+  "DataUpdated": {
+    "One": "Données mises à jour"
+  },
+  "DataLoadError": {
+    "One": "Erreur de chargement des données"
   }
 }

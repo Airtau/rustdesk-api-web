@@ -107,6 +107,12 @@ export const asyncRoutes = [
     component: () => import('@/layout/index.vue'),
     children: [
       {
+        path: 'usage',
+        name: 'Usage',
+        meta: { title: 'Connections', icon: 'Connection' }, // Иконка может быть 'Monitor', 'Link', 'List'
+        component: () => import('@/views/usage/index.vue'),
+      },
+      {
         path: 'peer',
         name: 'Peer',
         meta: { title: 'PeerManage', icon: 'Monitor' /*keepAlive: true*/ },

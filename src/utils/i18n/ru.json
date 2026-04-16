@@ -354,6 +354,9 @@
   "AuditConnLog": {
     "One": "Журнал соединений"
   },
+  "Connections": {
+    "One": "Соединения"
+  },
   "Peer": {
     "One": "Партнер",
     "Other": "Партнеры"
@@ -534,6 +537,39 @@
   },
   "Remark": {
     "One": "Примечание"
+  },
+  "ActiveConnections": {
+    "One": "Активные соединения (Usage)"
+  },
+  "Refresh": {
+    "One": "Обновить"
+  },
+  "IP": {
+    "One": "IP"
+  },
+  "Time": {
+    "One": "Время"
+  },
+  "Total": {
+    "One": "Всего (MB)"
+  },
+  "MaxSpeed": {
+    "One": "Макс. скорость"
+  },
+  "AvgSpeed": {
+    "One": "Сред. скорость"
+  },
+  "CurrentSpeed": {
+    "One": "Тек. скорость"
+  },
+  "NoActiveConnections": {
+    "One": "Нет активных соединений"
+  },
+  "DataUpdated": {
+    "One": "Данные обновлены"
+  },
+  "DataLoadError": {
+    "One": "Ошибка загрузки данных"
   }
 }
 

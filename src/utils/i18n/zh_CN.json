@@ -206,6 +206,9 @@
   "System": {
     "One": "系统"
   },
+  "Connections": {
+    "One": "连接" 
+  },
   "PeerManage": {
     "One": "设备管理"
   },
@@ -547,5 +550,38 @@
   },
   "Remark": {
     "One": "备注"
+  },
+  "ActiveConnections": {
+    "One": "活动连接 (使用情况)"
+  },
+  "Refresh": {
+    "One": "刷新"
+  },
+  "IP": {
+    "One": "IP"
+  },
+  "Time": {
+    "One": "时间"
+  },
+  "Total": {
+    "One": "总量 (MB)"
+  },
+  "MaxSpeed": {
+    "One": "最大速度"
+  },
+  "AvgSpeed": {
+    "One": "平均速度"
+  },
+  "CurrentSpeed": {
+    "One": "当前速度"
+  },
+  "NoActiveConnections": {
+    "One": "没有活动连接"
+  },
+  "DataUpdated": {
+    "One": "数据已更新"
+  },
+  "DataLoadError": {
+    "One": "数据加载错误"
   }
 }

@@ -206,6 +206,9 @@
   "System": {
     "One": "系統"
   },
+  "Connections": {
+    "One": "連線" 
+  },
   "PeerManage": {
     "One": "裝置管理"
   },
@@ -547,5 +550,38 @@
   },
   "Remark": {
     "One": "備註"
+  },
+  "ActiveConnections": {
+    "One": "活動連接 (使用情況)"
+  },
+  "Refresh": {
+    "One": "刷新"
+  },
+  "IP": {
+    "One": "IP"
+  },
+  "Time": {
+    "One": "時間"
+  },
+  "Total": {
+    "One": "總量 (MB)"
+  },
+  "MaxSpeed": {
+    "One": "最大速度"
+  },
+  "AvgSpeed": {
+    "One": "平均速度"
+  },
+  "CurrentSpeed": {
+    "One": "當前速度"
+  },
+  "NoActiveConnections": {
+    "One": "沒有活動連接"
+  },
+  "DataUpdated": {
+    "One": "數據已更新"
+  },
+  "DataLoadError": {
+    "One": "數據加載錯誤"
   }
 }

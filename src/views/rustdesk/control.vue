@@ -22,7 +22,6 @@
           <RelayServers ref="rs" :can-send="canSendIdServerCmd"/>
           <alwaysUseRelay :can-send="canSendIdServerCmd" @success="handleAlwaysUseRelaySuccess"/>
           <mustLogin :can-send="canControlMustLogin&&canSendIdServerCmd"/>
-          <usage :can-send="canSendRelayServerCmd"/>
           <blocklist :can-send="canSendRelayServerCmd"/>
           <blacklist :can-send="canSendRelayServerCmd"/>
         </el-space>
@@ -126,7 +125,6 @@
   import alwaysUseRelay from '@/views/rustdesk/always_use_relay.vue'
   import RelayServers from '@/views/rustdesk/relay_servers.vue'
   import mustLogin from '@/views/rustdesk/must_login.vue'
-  import usage from '@/views/rustdesk/usage.vue'
 
   const activeName = ref('Simple')
 

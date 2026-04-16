@@ -206,6 +206,9 @@
   "System": {
     "One": "시스템"
   },
+  "Connections": {
+    "One": "연결"
+  },
   "PeerManage": {
     "One": "장치 관리"
   },
@@ -517,5 +520,38 @@
   },
   "Remark": {
     "One": "비고"
+  },
+  "ActiveConnections": {
+    "One": "활성 연결 (사용량)"
+  },
+  "Refresh": {
+    "One": "새로 고침"
+  },
+  "IP": {
+    "One": "IP"
+  },
+  "Time": {
+    "One": "시간"
+  },
+  "Total": {
+    "One": "총계 (MB)"
+  },
+  "MaxSpeed": {
+    "One": "최대 속도"
+  },
+  "AvgSpeed": {
+    "One": "평균 속도"
+  },
+  "CurrentSpeed": {
+    "One": "현재 속도"
+  },
+  "NoActiveConnections": {
+    "One": "활성 연결 없음"
+  },
+  "DataUpdated": {
+    "One": "데이터 업데이트됨"
+  },
+  "DataLoadError": {
+    "One": "데이터 로드 오류"
   }
 }
