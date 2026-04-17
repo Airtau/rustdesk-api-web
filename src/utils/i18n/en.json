@@ -541,8 +541,8 @@
   "Refresh": {
     "One": "Refresh"
   },
-  "IP": {
-    "One": "IP"
+  "FromIP": {
+    "One": "From IP"
   },
   "Time": {
     "One": "Time"

@@ -527,8 +527,8 @@
   "Refresh": {
     "One": "새로 고침"
   },
-  "IP": {
-    "One": "IP"
+  "FromIP": {
+    "One": "발신 IP"
   },
   "Time": {
     "One": "시간"

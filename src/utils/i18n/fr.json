@@ -544,8 +544,8 @@
   "Refresh": {
     "One": "Actualiser"
   },
-  "IP": {
-    "One": "IP"
+  "FromIP": {
+    "One": "Depuis IP"
   },
   "Time": {
     "One": "Heure"

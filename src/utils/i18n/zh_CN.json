@@ -557,8 +557,8 @@
   "Refresh": {
     "One": "刷新"
   },
-  "IP": {
-    "One": "IP"
+  "FromIP": {
+    "One": "来源IP"
   },
   "Time": {
     "One": "时间"
