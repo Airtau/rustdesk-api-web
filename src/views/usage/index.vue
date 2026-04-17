@@ -10,28 +10,28 @@
     </template>
     <el-table :data="displayList" size="small" border stripe v-loading="loading">
       <el-table-column prop="ip" :label="T('IP')" min-width="120" />
-      <el-table-column prop="peer" :label="T('Peer')" min-width="120" />
-      <el-table-column prop="from_peer" :label="T('FromPeer')" min-width="120" />
+      <el-table-column prop="peer" :label="T('Peer')" min-width="100" />
+      <el-table-column prop="from_peer" :label="T('FromPeer')" min-width="100" />
       <el-table-column prop="from_name" :label="T('FromName')" min-width="150" />
-      <el-table-column prop="time" :label="T('Time')" min-width="160" />
+      <el-table-column prop="time" :label="T('Time')" min-width="100" />
       <el-table-column prop="total" :label="T('Total')" min-width="100">
         <template #default="{ row }">
-          {{ formatBytes(row.total) }}
+          {{ row.total }} {{ row.total_unit }}
         </template>
       </el-table-column>
       <el-table-column prop="max_speed" :label="T('MaxSpeed')" min-width="100">
         <template #default="{ row }">
-          {{ formatSpeed(row.max_speed) }}
+          {{ row.max_speed }} kb/s
         </template>
       </el-table-column>
       <el-table-column prop="avg_speed" :label="T('AvgSpeed')" min-width="100">
         <template #default="{ row }">
-          {{ formatSpeed(row.avg_speed) }}
+          {{ row.avg_speed }} kb/s
         </template>
       </el-table-column>
       <el-table-column prop="current_speed" :label="T('CurrentSpeed')" min-width="120">
         <template #default="{ row }">
-          {{ formatSpeed(row.current_speed) }}
+          {{ row.current_speed }} kb/s
         </template>
       </el-table-column>
     </el-table>
@@ -48,66 +48,59 @@ import { list as listPeers } from '@/api/peer'
 
 const loading = ref(false)
 const displayList = ref([])
-
-// Кэш для сопоставления IP с данными пиров
 const peersCache = ref(new Map())
 
-// Форматирование байтов в MB
-const formatBytes = (bytes) => {
-  if (!bytes) return '0 B'
-  const mb = bytes / (1024 * 1024)
-  return mb.toFixed(2) + ' MB'
-}
-
-// Форматирование скорости (байт/с -> Мбит/с)
-const formatSpeed = (bytesPerSec) => {
-  if (!bytesPerSec) return '0 Mbps'
-  const mbps = (bytesPerSec * 8) / (1024 * 1024)
-  return mbps.toFixed(2) + ' Mbps'
-}
-
-// Получение списка всех пиров из API
 const fetchPeersList = async () => {
   try {
     const response = await listPeers({ page: 1, page_size: 1000 })
-    
     if (response.code === 0 && response.data && response.data.list) {
       const cache = new Map()
       response.data.list.forEach(peer => {
-        // Сохраняем по IP адресу
         if (peer.ip) {
-          cache.set(peer.ip, {
+          // Очищаем IP от префикса ::ffff:
+          let cleanIp = peer.ip.replace(/^::ffff:/, '')
+          cache.set(cleanIp, {
             peer_id: peer.id,
             from_peer: peer.peer_id || peer.id,
             from_name: peer.hostname || peer.alias || peer.name || peer.id
           })
         }
-        // Также сохраняем по hostname
-        if (peer.hostname) {
-          cache.set(peer.hostname, {
-            peer_id: peer.id,
-            from_peer: peer.peer_id || peer.id,
-            from_name: peer.hostname
-          })
-        }
       })
       peersCache.value = cache
-      console.log('Peers cache loaded:', cache.size)
     }
   } catch (error) {
     console.error('Error fetching peers:', error)
   }
 }
 
-// Получение активных соединений через команду usage
 const fetchUsage = async () => {
   try {
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
     if (res && res.data) {
       const lines = res.data.split('\n').filter(line => line.trim())
       const connections = lines.map(line => {
-        const parts = line.split(/\s+/)
-        const ip = parts[0]
+        const parts = line.trim().split(/\s+/)
+        
+        // Очищаем IP
+        let ip = parts[0] || '-'
+        ip = ip.replace(/^::ffff:/, '')
+        ip = ip.replace(/:\d+:$/, '')
+        
+        // Время в секундах
+        let time = parts[1] || '-'
+        time = time.replace(/s$/, '') + ' сек'
+        
+        // Объём данных
+        let total = parts[2] || '0'
+        const totalValue = parseFloat(total)
+        const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
+        
+        // Скорости
+        const parseSpeed = (speedStr) => {
+          if (!speedStr) return 0
+          return parseFloat(speedStr)
+        }
+        
         const peerInfo = peersCache.value.get(ip) || {}
         
         return {
@@ -115,11 +108,12 @@ const fetchUsage = async () => {
           peer: peerInfo.peer_id || '-',
           from_peer: peerInfo.from_peer || '-',
           from_name: peerInfo.from_name || '-',
-          time: parts[1] || '-',
-          total: parseFloat(parts[2]) || 0,
-          max_speed: parseFloat(parts[3]) || 0,
-          avg_speed: parseFloat(parts[4]) || 0,
-          current_speed: parseFloat(parts[5]) || 0
+          time: time,
+          total: totalValue,
+          total_unit: totalUnit,
+          max_speed: parseSpeed(parts[3]),
+          avg_speed: parseSpeed(parts[4]),
+          current_speed: parseSpeed(parts[5])
         }
       })
       displayList.value = connections
@@ -130,7 +124,6 @@ const fetchUsage = async () => {
   }
 }
 
-// Основная функция обновления
 const getList = async () => {
   loading.value = true
   try {
