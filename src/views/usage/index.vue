@@ -9,13 +9,15 @@
       </div>
     </template>
     <el-table :data="displayList" size="small" border stripe v-loading="loading">
+      <el-table-column prop="full_id" :label="T('ConnectionId')" min-width="180" show-overflow-tooltip />
       <el-table-column prop="ip" :label="T('IP')" min-width="120" />
+      <el-table-column prop="port" :label="T('Port')" min-width="80" />
       <el-table-column prop="peer_id" :label="T('Peer')" min-width="100" />
       <el-table-column prop="from_peer" :label="T('FromPeer')" min-width="100" />
       <el-table-column prop="from_name" :label="T('FromName')" min-width="150" />
-      <el-table-column prop="from_ip" :label="T('FromIP')" min-width="120" />
       <el-table-column prop="uuid" :label="T('Uuid')" min-width="200" show-overflow-tooltip />
       <el-table-column prop="time" :label="T('Time')" min-width="100" />
+      <el-table-column prop="created_at" :label="T('CreatedAt')" min-width="160" />
       <el-table-column prop="total" :label="T('Total')" min-width="100">
         <template #default="{ row }">
           {{ row.total }} {{ row.total_unit }}
@@ -52,71 +54,90 @@ import { list as listAudit } from '@/api/audit'
 const loading = ref(false)
 const displayList = ref([])
 
-// Кэши
-const peersCache = ref(new Map())      // IP -> peer_id
-const auditCache = ref(new Map())      // peer_id -> {from_peer, from_name, from_ip, uuid}
+// Кэш для аудита по времени
+const auditCache = ref(new Map())
 
 const formatSpeed = (speedStr) => {
   if (!speedStr) return 0
   return parseFloat(speedStr)
 }
 
-// Получение списка всех пиров (IP -> peer_id)
-const fetchPeersList = async () => {
+// Получение текущего времени сервера
+const getServerTime = async () => {
   try {
-    const response = await listPeers({ page: 1, page_size: 1000 })
-    if (response.code === 0 && response.data && response.data.list) {
-      response.data.list.forEach(peer => {
-        if (peer.last_online_ip) {
-          let cleanIp = peer.last_online_ip.replace(/^::ffff:/, '')
-          peersCache.value.set(cleanIp, peer.id)
-        }
-        if (peer.ip) {
-          let cleanIp = peer.ip.replace(/^::ffff:/, '')
-          peersCache.value.set(cleanIp, peer.id)
-        }
-      })
+    const response = await fetch('/api/version')
+    const date = response.headers.get('Date')
+    if (date) {
+      return new Date(date).getTime()
     }
   } catch (error) {
-    console.error('Error fetching peers:', error)
+    console.error('Error getting server time:', error)
   }
+  return Date.now() // fallback
 }
 
-// Получение данных из журнала соединений по peer_id
-const fetchAuditByPeerId = async (peerId) => {
-  if (auditCache.value.has(peerId)) {
-    return auditCache.value.get(peerId)
+// Поиск в журнале соединений по IP и времени
+const findAuditByIpAndTime = async (ip, secondsAgo, port) => {
+  const cacheKey = `${ip}:${secondsAgo}:${port}`
+  
+  if (auditCache.value.has(cacheKey)) {
+    return auditCache.value.get(cacheKey)
   }
   
   try {
+    // Получаем текущее время сервера
+    const now = await getServerTime()
+    const createdAfter = new Date(now - (secondsAgo + 10) * 1000) // запас 10 секунд
+    const createdBefore = new Date(now - (secondsAgo - 10) * 1000)
+    
+    // Ищем записи за последние 5 минут
     const response = await listAudit({ 
       page: 1, 
-      page_size: 10,
-      peer_id: peerId 
+      page_size: 50,
+      ip: ip
     })
     
-    if (response.code === 0 && response.data && response.data.list && response.data.list.length > 0) {
-      const record = response.data.list[0]
-      const auditInfo = {
-        from_peer: record.from_peer || '-',
-        from_name: record.from_name || '-',
-        from_ip: record.ip || '-',
-        uuid: record.uuid || '-'
+    if (response.code === 0 && response.data && response.data.list) {
+      // Ищем запись с ближайшим created_at
+      let bestMatch = null
+      let minDiff = Infinity
+      
+      for (const record of response.data.list) {
+        const recordTime = new Date(record.created_at).getTime()
+        const expectedTime = now - secondsAgo * 1000
+        const diff = Math.abs(recordTime - expectedTime)
+        
+        // Также проверяем by peer_id
+        if (diff < minDiff && diff < 60000) { // разница не более 60 секунд
+          minDiff = diff
+          bestMatch = record
+        }
       }
-      auditCache.value.set(peerId, auditInfo)
-      return auditInfo
+      
+      if (bestMatch) {
+        const auditInfo = {
+          peer_id: bestMatch.peer_id || '-',
+          from_peer: bestMatch.from_peer || '-',
+          from_name: bestMatch.from_name || '-',
+          uuid: bestMatch.uuid || '-',
+          created_at: bestMatch.created_at || '-'
+        }
+        auditCache.value.set(cacheKey, auditInfo)
+        return auditInfo
+      }
     }
   } catch (error) {
-    console.error(`Error fetching audit for peer ${peerId}:`, error)
+    console.error(`Error finding audit for ${ip}:${secondsAgo}s`, error)
   }
   
   const defaultInfo = {
+    peer_id: '-',
     from_peer: '-',
     from_name: '-',
-    from_ip: '-',
-    uuid: '-'
+    uuid: '-',
+    created_at: '-'
   }
-  auditCache.value.set(peerId, defaultInfo)
+  auditCache.value.set(cacheKey, defaultInfo)
   return defaultInfo
 }
 
@@ -131,52 +152,43 @@ const fetchUsage = async () => {
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
         
-        let ip = parts[0] || '-'
-        ip = ip.replace(/^::ffff:/, '')
-        ip = ip.replace(/:\d+:$/, '')
+        // Полный идентификатор: ::ffff:85.114.8.78:49421
+        const fullId = parts[0] || '-'
         
-        let time = parts[1] || '-'
-        time = time.replace(/s$/, '') + ' сек'
+        // Извлекаем IP и порт
+        let ipPort = fullId.replace(/^::ffff:/, '')
+        let ip = ipPort
+        let port = ''
         
+        const lastColon = ipPort.lastIndexOf(':')
+        if (lastColon !== -1) {
+          ip = ipPort.substring(0, lastColon)
+          port = ipPort.substring(lastColon + 1)
+        }
+        
+        // Время в секундах
+        let timeStr = parts[1] || '0'
+        const secondsAgo = parseInt(timeStr.replace(/s$/, ''))
+        let timeDisplay = secondsAgo + ' сек'
+        
+        // Объём данных
         let total = parts[2] || '0'
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
         
-        const peerId = peersCache.value.get(ip)
-        
-        let peer = '-'
-        let fromPeer = '-'
-        let fromName = '-'
-        let fromIp = '-'
-        let uuid = '-'
-        
-        if (peerId) {
-          peer = peerId
-          const auditInfo = await fetchAuditByPeerId(peerId)
-          fromPeer = auditInfo.from_peer
-          fromName = auditInfo.from_name
-          fromIp = auditInfo.from_ip
-          uuid = auditInfo.uuid
-        } else {
-          const auditResponse = await listAudit({ page: 1, page_size: 10, ip: ip })
-          if (auditResponse.code === 0 && auditResponse.data && auditResponse.data.list && auditResponse.data.list.length > 0) {
-            const record = auditResponse.data.list[0]
-            peer = record.peer_id || '-'
-            fromPeer = record.from_peer || '-'
-            fromName = record.from_name || '-'
-            fromIp = record.ip || '-'
-            uuid = record.uuid || '-'
-          }
-        }
+        // Ищем в журнале по IP и времени
+        const auditInfo = await findAuditByIpAndTime(ip, secondsAgo, port)
         
         connections.push({
+          full_id: fullId,
           ip: ip,
-          peer_id: peer,
-          from_peer: fromPeer,
-          from_name: fromName,
-          from_ip: fromIp,
-          uuid: uuid,
-          time: time,
+          port: port,
+          peer_id: auditInfo.peer_id,
+          from_peer: auditInfo.from_peer,
+          from_name: auditInfo.from_name,
+          uuid: auditInfo.uuid,
+          created_at: auditInfo.created_at,
+          time: timeDisplay,
           total: totalValue,
           total_unit: totalUnit,
           max_speed: formatSpeed(parts[3]),
@@ -195,7 +207,8 @@ const fetchUsage = async () => {
 const getList = async () => {
   loading.value = true
   try {
-    await fetchPeersList()
+    // Очищаем кэш при каждом обновлении
+    auditCache.value.clear()
     await fetchUsage()
     ElMessage.success(T('DataUpdated'))
   } catch (error) {
