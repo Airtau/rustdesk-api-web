@@ -12,11 +12,14 @@
       <el-form-item>
         <el-table :data="form.list" size="small" border stripe>
           <el-table-column prop="0" :label="T('IP')" min-width="120" />
-          <el-table-column prop="1" :label="T('Time')" min-width="160" />
-          <el-table-column prop="2" :label="T('Total')" min-width="100" />
-          <el-table-column prop="3" :label="T('MaxSpeed')" min-width="100" />
-          <el-table-column prop="4" :label="T('AvgSpeed')" min-width="100" />
-          <el-table-column prop="5" :label="T('CurrentSpeed')" min-width="120" />
+          <el-table-column prop="1" :label="T('Peer')" min-width="120" />
+          <el-table-column prop="2" :label="T('FromPeer')" min-width="120" />
+          <el-table-column prop="3" :label="T('FromName')" min-width="150" />
+          <el-table-column prop="4" :label="T('Time')" min-width="160" />
+          <el-table-column prop="5" :label="T('Total')" min-width="100" />
+          <el-table-column prop="6" :label="T('MaxSpeed')" min-width="100" />
+          <el-table-column prop="7" :label="T('AvgSpeed')" min-width="100" />
+          <el-table-column prop="8" :label="T('CurrentSpeed')" min-width="120" />
         </el-table>
       </el-form-item>
     </el-form>
