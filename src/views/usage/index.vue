@@ -188,21 +188,32 @@ const fetchUsage = async () => {
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
         
-        const fullId = parts[0] || '-'
+        // Полный идентификатор: ::ffff:85.114.8.78:4367:
+        let fullId = parts[0] || '-'
+        
+        // Убираем префикс ::ffff:
         let cleanIp = fullId.replace(/^::ffff:/, '')
+        
+        // Убираем завершающее двоеточие (если есть)
+        cleanIp = cleanIp.replace(/:$/, '')
+        
+        // Теперь cleanIp = "85.114.8.78:4367"
+        // Находим последнее двоеточие для разделения IP и порта
         const lastColon = cleanIp.lastIndexOf(':')
         let ip = cleanIp
         let port = ''
         
         if (lastColon !== -1) {
-          ip = cleanIp.substring(0, lastColon)
-          port = cleanIp.substring(lastColon + 1)
+          ip = cleanIp.substring(0, lastColon)    // "85.114.8.78"
+          port = cleanIp.substring(lastColon + 1) // "4367"
         }
         
+        // Время в секундах
         let timeStr = parts[1] || '0'
         const secondsAgo = parseInt(timeStr.replace(/s$/, ''))
         let timeDisplay = secondsAgo + ' сек'
         
+        // Объём данных
         let total = parts[2] || '0'
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
