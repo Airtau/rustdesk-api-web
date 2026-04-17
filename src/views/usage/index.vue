@@ -110,7 +110,6 @@ const fetchActiveAuditByPeerId = async (peerId) => {
   }
   
   try {
-    // Ищем активные соединения (close_time = 0)
     const response = await listAudit({ 
       page: 1, 
       page_size: 50,
@@ -120,7 +119,6 @@ const fetchActiveAuditByPeerId = async (peerId) => {
     const activeConnections = []
     if (response.code === 0 && response.data && response.data.list) {
       for (const record of response.data.list) {
-        // close_time = 0 означает активное соединение
         if (record.close_time === 0 || record.close_time === '0') {
           activeConnections.push({
             peer_id: record.peer_id,
@@ -142,14 +140,15 @@ const fetchActiveAuditByPeerId = async (peerId) => {
 }
 
 // Сопоставление соединения из usage с активным аудитом
-const matchWithAudit = (ip, secondsAgo, possiblePeerIds, currentTime) => {
+const matchWithAudit = (ip, secondsAgo, possiblePeers, currentTime) => {
   const expectedTime = currentTime - secondsAgo * 1000
-  const TIME_TOLERANCE = 30000 // 30 секунд погрешности
+  const TIME_TOLERANCE = 30000 // 30 секунд
   
   let bestMatch = null
   let minDiff = Infinity
   
-  for (const peerId of possiblePeerIds) {
+  for (const peer of possiblePeers) {
+    const peerId = peer.peer_id
     const activeConnections = auditCache.value.get(peerId) || []
     
     for (const conn of activeConnections) {
@@ -160,9 +159,13 @@ const matchWithAudit = (ip, secondsAgo, possiblePeerIds, currentTime) => {
         if (diff < minDiff && diff < TIME_TOLERANCE) {
           minDiff = diff
           bestMatch = {
-            ...conn,
             peer_id: peerId,
-            hostname: possiblePeerIds.find(p => p.peer_id === peerId)?.hostname || peerId
+            hostname: peer.hostname,
+            from_peer: conn.from_peer,
+            from_name: conn.from_name,
+            from_ip: conn.from_ip,
+            uuid: conn.uuid,
+            created_at: conn.created_at
           }
         }
       }
@@ -175,7 +178,9 @@ const matchWithAudit = (ip, secondsAgo, possiblePeerIds, currentTime) => {
 // Получение активных соединений через команду usage
 const fetchUsage = async () => {
   try {
+    const currentTime = await getServerTime()
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
+    
     if (res && res.data) {
       const lines = res.data.split('\n').filter(line => line.trim())
       const connections = []
@@ -183,40 +188,70 @@ const fetchUsage = async () => {
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
         
-        // Полный идентификатор: ::ffff:85.114.8.78:49421
         const fullId = parts[0] || '-'
-        
-        // Извлекаем чистый IP (без порта и без ::ffff:)
         let cleanIp = fullId.replace(/^::ffff:/, '')
         const lastColon = cleanIp.lastIndexOf(':')
         let ip = cleanIp
         let port = ''
         
         if (lastColon !== -1) {
-          ip = cleanIp.substring(0, lastColon)  // Чистый IP
-          port = cleanIp.substring(lastColon + 1)  // Порт
+          ip = cleanIp.substring(0, lastColon)
+          port = cleanIp.substring(lastColon + 1)
         }
         
-        // Время в секундах
         let timeStr = parts[1] || '0'
         const secondsAgo = parseInt(timeStr.replace(/s$/, ''))
         let timeDisplay = secondsAgo + ' сек'
         
-        // Объём данных
         let total = parts[2] || '0'
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
         
-        // Берём данные пира по чистому IP
-        const peerInfo = peersByExternalIp.value.get(ip) || {}
+        // Находим возможных пиров по внешнему IP
+        const possiblePeers = peersByExternalIp.value.get(ip) || []
+        
+        let peerId = '-'
+        let hostname = '-'
+        let fromPeer = '-'
+        let fromName = '-'
+        let fromIp = '-'
+        let uuid = '-'
+        let createdAt = '-'
+        
+        if (possiblePeers.length > 0) {
+          // Загружаем активные аудиты для всех возможных пиров
+          for (const peer of possiblePeers) {
+            await fetchActiveAuditByPeerId(peer.peer_id)
+          }
+          
+          // Сопоставляем по времени
+          const match = matchWithAudit(ip, secondsAgo, possiblePeers, currentTime)
+          
+          if (match) {
+            peerId = match.peer_id
+            hostname = match.hostname
+            fromPeer = match.from_peer
+            fromName = match.from_name
+            fromIp = match.from_ip
+            uuid = match.uuid
+            createdAt = match.created_at
+          } else if (possiblePeers.length === 1) {
+            peerId = possiblePeers[0].peer_id
+            hostname = possiblePeers[0].hostname
+          }
+        }
         
         connections.push({
           full_id: fullId,
-          ip: ip,                    // Чистый IP для отображения
-          port: port,                // Порт
-          peer_id: peerInfo.peer_id || '-',
-          hostname: peerInfo.hostname || '-',
-          username: peerInfo.username || '-',
+          ip: ip,
+          port: port,
+          peer_id: peerId,
+          hostname: hostname,
+          from_peer: fromPeer,
+          from_name: fromName,
+          from_ip: fromIp,
+          uuid: uuid,
+          created_at: createdAt,
           time: timeDisplay,
           total: totalValue,
           total_unit: totalUnit,
@@ -237,7 +272,6 @@ const fetchUsage = async () => {
 const getList = async () => {
   loading.value = true
   try {
-    // Очищаем кэш при каждом обновлении
     auditCache.value.clear()
     await fetchPeersList()
     await fetchUsage()
