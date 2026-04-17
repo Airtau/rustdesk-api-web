@@ -1,5 +1,5 @@
 <template>
-  <el-card class="usage-card" shadow="hover" v-loading="form.loading">
+  <el-card class="usage-card" shadow="hover" v-loading="loading">
     <template #header>
       <div class="card-header">
         <span>{{ T('ActiveConnections') }}</span>
@@ -8,63 +8,145 @@
         </el-button>
       </div>
     </template>
-    <el-form :disabled="!canSend">
-      <el-form-item>
-        <el-table :data="form.list" size="small" border stripe>
-          <el-table-column prop="0" :label="T('IP')" min-width="120" />
-          <el-table-column prop="1" :label="T('Peer')" min-width="120" />
-          <el-table-column prop="2" :label="T('FromPeer')" min-width="120" />
-          <el-table-column prop="3" :label="T('FromName')" min-width="150" />
-          <el-table-column prop="4" :label="T('Time')" min-width="160" />
-          <el-table-column prop="5" :label="T('Total')" min-width="100" />
-          <el-table-column prop="6" :label="T('MaxSpeed')" min-width="100" />
-          <el-table-column prop="7" :label="T('AvgSpeed')" min-width="100" />
-          <el-table-column prop="8" :label="T('CurrentSpeed')" min-width="120" />
-        </el-table>
-      </el-form-item>
-    </el-form>
+    <el-table :data="displayList" size="small" border stripe v-loading="loading">
+      <el-table-column prop="ip" :label="T('IP')" min-width="120" />
+      <el-table-column prop="peer" :label="T('Peer')" min-width="120" />
+      <el-table-column prop="from_peer" :label="T('FromPeer')" min-width="120" />
+      <el-table-column prop="from_name" :label="T('FromName')" min-width="150" />
+      <el-table-column prop="time" :label="T('Time')" min-width="160" />
+      <el-table-column prop="total" :label="T('Total')" min-width="100">
+        <template #default="{ row }">
+          {{ formatBytes(row.total) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="max_speed" :label="T('MaxSpeed')" min-width="100">
+        <template #default="{ row }">
+          {{ formatSpeed(row.max_speed) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="avg_speed" :label="T('AvgSpeed')" min-width="100">
+        <template #default="{ row }">
+          {{ formatSpeed(row.avg_speed) }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="current_speed" :label="T('CurrentSpeed')" min-width="120">
+        <template #default="{ row }">
+          {{ formatSpeed(row.current_speed) }}
+        </template>
+      </el-table-column>
+    </el-table>
   </el-card>
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { T } from '@/utils/i18n'
-import { reactive, watch, onMounted } from 'vue'
 import { sendCmd } from '@/api/rustdesk'
 import { RELAY_TARGET } from '@/views/rustdesk/options'
+import { list as listPeers } from '@/api/peer'
 
-const props = defineProps({
-  canSend: {
-    type: Boolean,
-    default: true
-  }
-})
+const loading = ref(false)
+const displayList = ref([])
 
-const form = reactive({
-  get_cmd: 'u',
-  list: [],
-  target: RELAY_TARGET,
-  loading: false,
-})
+// Кэш для сопоставления IP с данными пиров
+const peersCache = ref(new Map())
 
-const getList = async () => {
-  form.loading = true
-  const res = await sendCmd({ cmd: form.get_cmd, target: RELAY_TARGET }).catch(_ => false)
-  form.loading = false
-  if (res && res.data) {
-    form.list = res.data.split('\n').filter(i => i).map(i => i.split(/\s+/))
+// Форматирование байтов в MB
+const formatBytes = (bytes) => {
+  if (!bytes) return '0 B'
+  const mb = bytes / (1024 * 1024)
+  return mb.toFixed(2) + ' MB'
+}
+
+// Форматирование скорости (байт/с -> Мбит/с)
+const formatSpeed = (bytesPerSec) => {
+  if (!bytesPerSec) return '0 Mbps'
+  const mbps = (bytesPerSec * 8) / (1024 * 1024)
+  return mbps.toFixed(2) + ' Mbps'
+}
+
+// Получение списка всех пиров из API
+const fetchPeersList = async () => {
+  try {
+    const response = await listPeers({ page: 1, page_size: 1000 })
+    
+    if (response.code === 0 && response.data && response.data.list) {
+      const cache = new Map()
+      response.data.list.forEach(peer => {
+        // Сохраняем по IP адресу
+        if (peer.ip) {
+          cache.set(peer.ip, {
+            peer_id: peer.id,
+            from_peer: peer.peer_id || peer.id,
+            from_name: peer.hostname || peer.alias || peer.name || peer.id
+          })
+        }
+        // Также сохраняем по hostname
+        if (peer.hostname) {
+          cache.set(peer.hostname, {
+            peer_id: peer.id,
+            from_peer: peer.peer_id || peer.id,
+            from_name: peer.hostname
+          })
+        }
+      })
+      peersCache.value = cache
+      console.log('Peers cache loaded:', cache.size)
+    }
+  } catch (error) {
+    console.error('Error fetching peers:', error)
   }
 }
 
-watch(() => props.canSend, (v) => {
-  if (v) {
-    getList()
+// Получение активных соединений через команду usage
+const fetchUsage = async () => {
+  try {
+    const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
+    if (res && res.data) {
+      const lines = res.data.split('\n').filter(line => line.trim())
+      const connections = lines.map(line => {
+        const parts = line.split(/\s+/)
+        const ip = parts[0]
+        const peerInfo = peersCache.value.get(ip) || {}
+        
+        return {
+          ip: ip,
+          peer: peerInfo.peer_id || '-',
+          from_peer: peerInfo.from_peer || '-',
+          from_name: peerInfo.from_name || '-',
+          time: parts[1] || '-',
+          total: parseFloat(parts[2]) || 0,
+          max_speed: parseFloat(parts[3]) || 0,
+          avg_speed: parseFloat(parts[4]) || 0,
+          current_speed: parseFloat(parts[5]) || 0
+        }
+      })
+      displayList.value = connections
+    }
+  } catch (error) {
+    console.error('Error fetching usage:', error)
+    ElMessage.error(T('DataLoadError'))
   }
-}, { immediate: true })
+}
+
+// Основная функция обновления
+const getList = async () => {
+  loading.value = true
+  try {
+    await fetchPeersList()
+    await fetchUsage()
+    ElMessage.success(T('DataUpdated'))
+  } catch (error) {
+    console.error('Error:', error)
+    ElMessage.error(T('DataLoadError'))
+  } finally {
+    loading.value = false
+  }
+}
 
 onMounted(() => {
-  if (props.canSend) {
-    getList()
-  }
+  getList()
 })
 </script>
 
