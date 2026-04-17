@@ -10,10 +10,11 @@
     </template>
     <el-table :data="displayList" size="small" border stripe v-loading="loading">
       <el-table-column prop="ip" :label="T('IP')" min-width="120" />
-      <el-table-column prop="peer" :label="T('Peer')" min-width="100" />
+      <el-table-column prop="peer_id" :label="T('Peer')" min-width="100" />
       <el-table-column prop="from_peer" :label="T('FromPeer')" min-width="100" />
       <el-table-column prop="from_name" :label="T('FromName')" min-width="150" />
       <el-table-column prop="from_ip" :label="T('FromIP')" min-width="120" />
+      <el-table-column prop="uuid" :label="T('Uuid')" min-width="200" show-overflow-tooltip />
       <el-table-column prop="time" :label="T('Time')" min-width="100" />
       <el-table-column prop="total" :label="T('Total')" min-width="100">
         <template #default="{ row }">
@@ -53,7 +54,12 @@ const displayList = ref([])
 
 // Кэши
 const peersCache = ref(new Map())      // IP -> peer_id
-const auditCache = ref(new Map())      // peer_id -> {from_peer, from_name, from_ip}
+const auditCache = ref(new Map())      // peer_id -> {from_peer, from_name, from_ip, uuid}
+
+const formatSpeed = (speedStr) => {
+  if (!speedStr) return 0
+  return parseFloat(speedStr)
+}
 
 // Получение списка всех пиров (IP -> peer_id)
 const fetchPeersList = async () => {
@@ -70,7 +76,6 @@ const fetchPeersList = async () => {
           peersCache.value.set(cleanIp, peer.id)
         }
       })
-      console.log('Peers cache loaded:', peersCache.value.size)
     }
   } catch (error) {
     console.error('Error fetching peers:', error)
@@ -79,7 +84,6 @@ const fetchPeersList = async () => {
 
 // Получение данных из журнала соединений по peer_id
 const fetchAuditByPeerId = async (peerId) => {
-  // Проверяем кэш
   if (auditCache.value.has(peerId)) {
     return auditCache.value.get(peerId)
   }
@@ -96,7 +100,8 @@ const fetchAuditByPeerId = async (peerId) => {
       const auditInfo = {
         from_peer: record.from_peer || '-',
         from_name: record.from_name || '-',
-        from_ip: record.ip || '-'
+        from_ip: record.ip || '-',
+        uuid: record.uuid || '-'
       }
       auditCache.value.set(peerId, auditInfo)
       return auditInfo
@@ -105,11 +110,11 @@ const fetchAuditByPeerId = async (peerId) => {
     console.error(`Error fetching audit for peer ${peerId}:`, error)
   }
   
-  // Если не найдено, возвращаем заглушку
   const defaultInfo = {
     from_peer: '-',
     from_name: '-',
-    from_ip: '-'
+    from_ip: '-',
+    uuid: '-'
   }
   auditCache.value.set(peerId, defaultInfo)
   return defaultInfo
@@ -126,43 +131,33 @@ const fetchUsage = async () => {
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
         
-        // Очищаем IP
         let ip = parts[0] || '-'
         ip = ip.replace(/^::ffff:/, '')
         ip = ip.replace(/:\d+:$/, '')
         
-        // Время в секундах
         let time = parts[1] || '-'
         time = time.replace(/s$/, '') + ' сек'
         
-        // Объём данных
         let total = parts[2] || '0'
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
         
-        // Скорости
-        const parseSpeed = (speedStr) => {
-          if (!speedStr) return 0
-          return parseFloat(speedStr)
-        }
-        
-        // Шаг 1: Находим peer_id по IP
         const peerId = peersCache.value.get(ip)
         
         let peer = '-'
         let fromPeer = '-'
         let fromName = '-'
         let fromIp = '-'
+        let uuid = '-'
         
-        // Шаг 2: Если нашли peer_id, ищем в журнале соединений
         if (peerId) {
           peer = peerId
           const auditInfo = await fetchAuditByPeerId(peerId)
           fromPeer = auditInfo.from_peer
           fromName = auditInfo.from_name
           fromIp = auditInfo.from_ip
+          uuid = auditInfo.uuid
         } else {
-          // Если пир не найден, пробуем найти в журнале по IP
           const auditResponse = await listAudit({ page: 1, page_size: 10, ip: ip })
           if (auditResponse.code === 0 && auditResponse.data && auditResponse.data.list && auditResponse.data.list.length > 0) {
             const record = auditResponse.data.list[0]
@@ -170,21 +165,23 @@ const fetchUsage = async () => {
             fromPeer = record.from_peer || '-'
             fromName = record.from_name || '-'
             fromIp = record.ip || '-'
+            uuid = record.uuid || '-'
           }
         }
         
         connections.push({
           ip: ip,
-          peer: peer,
+          peer_id: peer,
           from_peer: fromPeer,
           from_name: fromName,
           from_ip: fromIp,
+          uuid: uuid,
           time: time,
           total: totalValue,
           total_unit: totalUnit,
-          max_speed: parseSpeed(parts[3]),
-          avg_speed: parseSpeed(parts[4]),
-          current_speed: parseSpeed(parts[5])
+          max_speed: formatSpeed(parts[3]),
+          avg_speed: formatSpeed(parts[4]),
+          current_speed: formatSpeed(parts[5])
         })
       }
       displayList.value = connections
