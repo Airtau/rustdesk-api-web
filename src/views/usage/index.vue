@@ -9,7 +9,6 @@
       </div>
     </template>
     <el-table :data="displayList" size="small" border stripe v-loading="loading">
-      <el-table-column prop="full_id" :label="T('ConnectionId')" min-width="180" show-overflow-tooltip />
       <el-table-column prop="ip" :label="T('IP')" min-width="120" />
       <el-table-column prop="port" :label="T('Port')" min-width="80" />
       <el-table-column prop="peer_id" :label="T('Peer')" min-width="100" />
@@ -176,9 +175,7 @@ const matchWithAudit = (ip, secondsAgo, possiblePeerIds, currentTime) => {
 // Получение активных соединений через команду usage
 const fetchUsage = async () => {
   try {
-    const currentTime = await getServerTime()
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
-    
     if (res && res.data) {
       const lines = res.data.split('\n').filter(line => line.trim())
       const connections = []
@@ -189,15 +186,15 @@ const fetchUsage = async () => {
         // Полный идентификатор: ::ffff:85.114.8.78:49421
         const fullId = parts[0] || '-'
         
-        // Извлекаем IP и порт
-        let ipPort = fullId.replace(/^::ffff:/, '')
-        let ip = ipPort
+        // Извлекаем чистый IP (без порта и без ::ffff:)
+        let cleanIp = fullId.replace(/^::ffff:/, '')
+        const lastColon = cleanIp.lastIndexOf(':')
+        let ip = cleanIp
         let port = ''
         
-        const lastColon = ipPort.lastIndexOf(':')
         if (lastColon !== -1) {
-          ip = ipPort.substring(0, lastColon)
-          port = ipPort.substring(lastColon + 1)
+          ip = cleanIp.substring(0, lastColon)  // Чистый IP
+          port = cleanIp.substring(lastColon + 1)  // Порт
         }
         
         // Время в секундах
@@ -210,53 +207,16 @@ const fetchUsage = async () => {
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
         
-        // Находим возможных пиров по внешнему IP
-        const possiblePeers = peersByExternalIp.value.get(ip) || []
-        
-        let auditMatch = null
-        let peerId = '-'
-        let hostname = '-'
-        let fromPeer = '-'
-        let fromName = '-'
-        let fromIp = '-'
-        let uuid = '-'
-        let createdAt = '-'
-        
-        if (possiblePeers.length > 0) {
-          // Для каждого возможного пира получаем активные соединения
-          for (const peer of possiblePeers) {
-            await fetchActiveAuditByPeerId(peer.peer_id)
-          }
-          
-          // Сопоставляем по времени
-          auditMatch = matchWithAudit(ip, secondsAgo, possiblePeers, currentTime)
-          
-          if (auditMatch) {
-            peerId = auditMatch.peer_id
-            hostname = auditMatch.hostname
-            fromPeer = auditMatch.from_peer
-            fromName = auditMatch.from_name
-            fromIp = auditMatch.from_ip
-            uuid = auditMatch.uuid
-            createdAt = auditMatch.created_at
-          } else if (possiblePeers.length === 1) {
-            // Если только один возможный пир, используем его данные
-            peerId = possiblePeers[0].peer_id
-            hostname = possiblePeers[0].hostname
-          }
-        }
+        // Берём данные пира по чистому IP
+        const peerInfo = peersByExternalIp.value.get(ip) || {}
         
         connections.push({
           full_id: fullId,
-          ip: ip,
-          port: port,
-          peer_id: peerId,
-          hostname: hostname,
-          from_peer: fromPeer,
-          from_name: fromName,
-          from_ip: fromIp,
-          uuid: uuid,
-          created_at: createdAt,
+          ip: ip,                    // Чистый IP для отображения
+          port: port,                // Порт
+          peer_id: peerInfo.peer_id || '-',
+          hostname: peerInfo.hostname || '-',
+          username: peerInfo.username || '-',
           time: timeDisplay,
           total: totalValue,
           total_unit: totalUnit,
@@ -266,6 +226,7 @@ const fetchUsage = async () => {
         })
       }
       displayList.value = connections
+      console.log('Connections:', connections)
     }
   } catch (error) {
     console.error('Error fetching usage:', error)
