@@ -113,7 +113,7 @@ const fetchActiveAuditByPeerId = async (peerId) => {
     const response = await listAudit({ 
       page: 1, 
       page_size: 50,
-      peer_id: peerId
+      from_peer: peerId
     })
     
     const activeConnections = []
