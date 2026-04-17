@@ -110,19 +110,24 @@ const fetchActiveAuditByPeerId = async (peerId) => {
   }
   
   try {
+    // Ищем по from_peer (отправитель) или по peer_id (получатель)
     const response = await listAudit({ 
       page: 1, 
       page_size: 50,
-      peer_id: peerId
+      peer_id: peerId,
+      from_peer: peerId  // Добавляем поиск по from_peer
     })
     
     const activeConnections = []
     if (response.code === 0 && response.data && response.data.list) {
       for (const record of response.data.list) {
         if (record.close_time === 0 || record.close_time === '0') {
+          // Если нашли по from_peer, то peer_id и from_peer меняются местами
+          const isFromPeer = (record.from_peer === peerId)
+          
           activeConnections.push({
-            peer_id: record.peer_id,
-            from_peer: record.from_peer || '-',
+            peer_id: isFromPeer ? record.peer_id : record.peer_id,
+            from_peer: isFromPeer ? record.from_peer : record.from_peer,
             from_name: record.from_name || '-',
             from_ip: record.ip || '-',
             uuid: record.uuid || '-',
