@@ -200,35 +200,6 @@ const getServerTime = async () => {
 }
 
 // Получение списка всех пиров и группировка по внешнему IP
-const fetchPeersList = async () => {
-  try {
-    console.log('🔍 [DEBUG] Начало загрузки списка пиров...')
-    const response = await listPeers({ page: 1, page_size: 1000 })
-    if (response.code === 0 && response.data && response.data.list) {
-      const map = new Map()
-      console.log(`📋 [DEBUG] Получено ${response.data.list.length} пиров`)
-      
-      response.data.list.forEach(peer => {
-        if (peer.last_online_ip && peer.last_online_ip !== '0.0.0.0') {
-          const externalIp = peer.last_online_ip.replace(/^::ffff:/, '')
-          const peersList = map.get(externalIp) || []
-          peersList.push({
-            peer_id: peer.id,
-            hostname: peer.hostname || peer.alias || peer.id
-          })
-          map.set(externalIp, peersList)
-          console.log(`  📌 [DEBUG] Пир: ID=${peer.id}, IP=${externalIp}, hostname=${peer.hostname}`)
-        }
-      })
-      peersByExternalIp.value = map
-      console.log(`✅ [DEBUG] Всего уникальных внешних IP: ${map.size}`)
-    }
-  } catch (error) {
-    console.error('❌ [DEBUG] Ошибка загрузки пиров:', error)
-  }
-}
-
-// Получение активных соединений для конкретного peer_id из аудита
 const fetchActiveAuditByPeerId = async (peerId) => {
   if (auditCache.value.has(peerId)) {
     return auditCache.value.get(peerId)
@@ -246,10 +217,10 @@ const fetchActiveAuditByPeerId = async (peerId) => {
     
     if (response.code === 0 && response.data && response.data.list) {
       for (const record of response.data.list) {
-        // Активное соединение: action='new' И close_time === 0
-        if (record.action === 'new' && record.close_time === 0) {
+        if (record.close_time === 0) {
           activeConnections.push({
-            peer_id: record.peer_id,
+            // Если нашли по from_peer, показываем from_peer как Peer
+            peer_id: record.from_peer,
             from_peer: record.from_peer,
             from_name: record.from_name || '-',
             from_ip: record.ip || '-',
@@ -270,7 +241,7 @@ const fetchActiveAuditByPeerId = async (peerId) => {
       
       if (response.code === 0 && response.data && response.data.list) {
         for (const record of response.data.list) {
-          if (record.action === 'new' && record.close_time === 0) {
+          if (record.close_time === 0 ) {
             activeConnections.push({
               peer_id: record.peer_id,
               from_peer: record.from_peer,
@@ -284,7 +255,6 @@ const fetchActiveAuditByPeerId = async (peerId) => {
       }
     }
     
-    console.log(`  ✅ [DEBUG] Всего активных соединений для peer_id=${peerId}: ${activeConnections.length}`)
     auditCache.value.set(peerId, activeConnections)
     return activeConnections
   } catch (error) {
