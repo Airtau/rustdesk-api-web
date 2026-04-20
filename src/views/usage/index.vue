@@ -202,8 +202,11 @@ const getServerTime = async () => {
 // Получение списка всех пиров и группировка по внешнему IP
 const fetchActiveAuditByPeerId = async (peerId) => {
   if (auditCache.value.has(peerId)) {
+    console.log(`  📦 [DEBUG] Кэш для peer_id=${peerId}: ${auditCache.value.get(peerId).length} соединений`)
     return auditCache.value.get(peerId)
   }
+  
+  console.log(`  🔍 [DEBUG] Поиск активных соединений для peer_id=${peerId}...`)
   
   try {
     // Сначала ищем по from_peer
@@ -216,11 +219,18 @@ const fetchActiveAuditByPeerId = async (peerId) => {
     let activeConnections = []
     
     if (response.code === 0 && response.data && response.data.list) {
+      console.log(`  📋 [DEBUG] Найдено ${response.data.list.length} записей по from_peer`)
+      
       for (const record of response.data.list) {
-        if (record.close_time === 0) {
+        const isActive = (record.action === 'new' && (record.close_time === 0 || record.close_time === '0'))
+        
+        console.log(`    📊 record: action=${record.action}, close_time=${record.close_time}, peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
+        console.log(`       isActive=${isActive}`)
+        
+        if (isActive) {
+          console.log(`    ✅ [DEBUG] Активное соединение (from_peer): peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
           activeConnections.push({
-            // Если нашли по from_peer, показываем from_peer как Peer
-            peer_id: record.from_peer,
+            peer_id: record.from_peer,  // Показываем from_peer как Peer
             from_peer: record.from_peer,
             from_name: record.from_name || '-',
             from_ip: record.ip || '-',
@@ -233,6 +243,7 @@ const fetchActiveAuditByPeerId = async (peerId) => {
     
     // Если не нашли по from_peer, ищем по peer_id
     if (activeConnections.length === 0) {
+      console.log(`  🔍 [DEBUG] Не найдено по from_peer, ищем по peer_id...`)
       response = await listAudit({ 
         page: 1, 
         page_size: 50,
@@ -240,8 +251,16 @@ const fetchActiveAuditByPeerId = async (peerId) => {
       })
       
       if (response.code === 0 && response.data && response.data.list) {
+        console.log(`  📋 [DEBUG] Найдено ${response.data.list.length} записей по peer_id`)
+        
         for (const record of response.data.list) {
-          if (record.close_time === 0 ) {
+          const isActive = (record.action === 'new' && (record.close_time === 0 || record.close_time === '0'))
+          
+          console.log(`    📊 record: action=${record.action}, close_time=${record.close_time}, peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
+          console.log(`       isActive=${isActive}`)
+          
+          if (isActive) {
+            console.log(`    ✅ [DEBUG] Активное соединение (peer_id): peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
             activeConnections.push({
               peer_id: record.peer_id,
               from_peer: record.from_peer,
@@ -255,10 +274,11 @@ const fetchActiveAuditByPeerId = async (peerId) => {
       }
     }
     
+    console.log(`  ✅ [DEBUG] Всего активных соединений для peer_id=${peerId}: ${activeConnections.length}`)
     auditCache.value.set(peerId, activeConnections)
     return activeConnections
   } catch (error) {
-    console.error(`Error fetching active audit for peer ${peerId}:`, error)
+    console.error(`  ❌ [DEBUG] Ошибка получения аудита для peer_id=${peerId}:`, error)
   }
   return []
 }
