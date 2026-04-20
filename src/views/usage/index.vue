@@ -231,47 +231,62 @@ const fetchPeersList = async () => {
 // Получение активных соединений для конкретного peer_id из аудита
 const fetchActiveAuditByPeerId = async (peerId) => {
   if (auditCache.value.has(peerId)) {
-    console.log(`  📦 [DEBUG] Кэш для peer_id=${peerId}: ${auditCache.value.get(peerId).length} соединений`)
     return auditCache.value.get(peerId)
   }
   
-  console.log(`  🔍 [DEBUG] Поиск активных соединений для peer_id=${peerId}...`)
-  
   try {
-    const response = await listAudit({ 
+    // Сначала ищем по peer_id
+    let response = await listAudit({ 
       page: 1, 
       page_size: 50,
-      peer_id: peerId,
-      from_peer: peerId
+      peer_id: peerId
     })
     
-    const activeConnections = []
+    let activeConnections = []
+    
     if (response.code === 0 && response.data && response.data.list) {
-      console.log(`  📋 [DEBUG] Найдено ${response.data.list.length} записей в аудите`)
-      
       for (const record of response.data.list) {
-        // Фильтруем по action === 'new' (активное соединение)
         if (record.action === 'new') {
-          const isFromPeer = (record.from_peer === peerId)
           activeConnections.push({
-            peer_id: isFromPeer ? record.peer_id : record.peer_id,
-            from_peer: isFromPeer ? record.from_peer : record.from_peer,
+            peer_id: record.peer_id,
+            from_peer: record.from_peer,
             from_name: record.from_name || '-',
             from_ip: record.ip || '-',
             uuid: record.uuid || '-',
             created_at: record.created_at || '-'
           })
-          console.log(`    ✅ [DEBUG] Активное соединение: peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
-        } else {
-          console.log(`    ⏳ [DEBUG] Пропущено (action=${record.action}): peer_id=${record.peer_id}`)
         }
       }
     }
+    
+    // Если не нашли, ищем по from_peer
+    if (activeConnections.length === 0) {
+      response = await listAudit({ 
+        page: 1, 
+        page_size: 50,
+        from_peer: peerId
+      })
+      
+      if (response.code === 0 && response.data && response.data.list) {
+        for (const record of response.data.list) {
+          if (record.action === 'new') {
+            activeConnections.push({
+              peer_id: record.peer_id,
+              from_peer: record.from_peer,
+              from_name: record.from_name || '-',
+              from_ip: record.ip || '-',
+              uuid: record.uuid || '-',
+              created_at: record.created_at || '-'
+            })
+          }
+        }
+      }
+    }
+    
     auditCache.value.set(peerId, activeConnections)
-    console.log(`  ✅ [DEBUG] Всего активных соединений для peer_id=${peerId}: ${activeConnections.length}`)
     return activeConnections
   } catch (error) {
-    console.error(`  ❌ [DEBUG] Ошибка получения аудита для peer_id=${peerId}:`, error)
+    console.error(`Error fetching active audit for peer ${peerId}:`, error)
   }
   return []
 }
