@@ -6,7 +6,7 @@
           <span>{{ T('ActiveConnections') }}</span>
           <div class="header-actions">
             <el-button :icon="Setting" @click="showColumnSetting"></el-button>
-            <el-button type="primary" size="small" @click="getList">
+            <el-button type="primary" @click="getList">
               {{ T('Refresh') }}
             </el-button>
           </div>
