@@ -48,7 +48,7 @@ export function fileBatchDelete (data) {
 
 export function listActive (params) {
   return request({
-    url: '/admin/active_connections/list',
+    url: '/active_connections/list',
     params,
   })
 }
