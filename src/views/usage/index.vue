@@ -182,6 +182,9 @@ const allColumns = ref([
 // Видимые колонки
 const visibleColumns = ref([])
 
+// Кэш активных соединений из аудита (с данными из peers)
+const activeAuditCache = ref([])
+
 const formatSpeed = (speedStr) => {
   if (!speedStr) return 0
   return parseFloat(speedStr)
@@ -201,7 +204,7 @@ const getServerTime = async () => {
   return Date.now()
 }
 
-// Получение всех активных соединений из аудита (с данными из peers)
+// Получение всех активных соединений из нового эндпоинта
 const fetchActiveAudit = async () => {
   try {
     const response = await listActive({ 
@@ -210,7 +213,8 @@ const fetchActiveAudit = async () => {
     })
     
     if (response.code === 0 && response.data && response.data.list) {
-      console.log(`✅ [DEBUG] Всего активных соединений: ${response.data.list.length}`)
+      console.log(`✅ [DEBUG] Всего активных соединений из API: ${response.data.list.length}`)
+      activeAuditCache.value = response.data.list
       return response.data.list
     }
     return []
@@ -220,13 +224,13 @@ const fetchActiveAudit = async () => {
   }
 }
 
-// Получение активных соединений через команду usage
+// Получение активных соединений через команду usage и сопоставление с audit
 const fetchUsage = async () => {
   try {
     const currentTime = await getServerTime()
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
     
-    // Загружаем активные соединения из аудита
+    // Получаем активные соединения из аудита
     const activeAudit = await fetchActiveAudit()
     
     if (res && res.data) {
@@ -273,7 +277,6 @@ const fetchUsage = async () => {
             if (audit.created_at && audit.created_at !== '-') {
               const auditTime = new Date(audit.created_at).getTime()
               const diff = Math.abs(auditTime - expectedTime)
-              console.log(`📊 Сравнение: audit.created_at=${audit.created_at}, expectedTime=${new Date(expectedTime).toLocaleString()}, diff=${diff}ms`)
               
               if (diff < minDiff && diff < TIME_TOLERANCE) {
                 minDiff = diff
