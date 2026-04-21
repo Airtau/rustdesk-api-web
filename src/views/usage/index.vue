@@ -148,7 +148,6 @@ import { Setting, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { T } from '@/utils/i18n'
 import { sendCmd } from '@/api/rustdesk'
 import { RELAY_TARGET } from '@/views/rustdesk/options'
-import { list as listPeers } from '@/api/peer'
 import { list as listAudit } from '@/api/audit'
 
 const loading = ref(false)
@@ -176,8 +175,7 @@ const allColumns = ref([
 // Видимые колонки
 const visibleColumns = ref([])
 
-// Кэши
-const peersByExternalIp = ref(new Map())
+// Кэш активных соединений из аудита
 const auditCache = ref(new Map())
 
 const formatSpeed = (speedStr) => {
@@ -199,64 +197,20 @@ const getServerTime = async () => {
   return Date.now()
 }
 
-// Получение списка всех пиров и группировка по внешнему IP
-const fetchPeersList = async () => {
+// Получение всех активных соединений из аудита (action='new' AND close_time=0)
+const fetchAllActiveAudit = async () => {
   try {
-    console.log('🔍 [DEBUG] Начало загрузки списка пиров...')
-    const response = await listPeers({ page: 1, page_size: 1000 })
-    if (response.code === 0 && response.data && response.data.list) {
-      const map = new Map()
-      response.data.list.forEach(peer => {
-        if (peer.last_online_ip && peer.last_online_ip !== '0.0.0.0') {
-          const externalIp = peer.last_online_ip.replace(/^::ffff:/, '')
-          const peersList = map.get(externalIp) || []
-          peersList.push({
-            peer_id: peer.id,
-            hostname: peer.hostname || peer.alias || peer.id
-          })
-          map.set(externalIp, peersList)
-        }
-      })
-      peersByExternalIp.value = map
-      console.log('✅ [DEBUG] Всего уникальных внешних IP:', map.size)
-    }
-  } catch (error) {
-    console.error('❌ [DEBUG] Ошибка загрузки пиров:', error)
-  }
-}
-
-// Получение активных соединений для конкретного peer_id из аудита
-const fetchActiveAuditByPeerId = async (peerId) => {
-  if (auditCache.value.has(peerId)) {
-    console.log(`  📦 [DEBUG] Кэш для peer_id=${peerId}: ${auditCache.value.get(peerId).length} соединений`)
-    return auditCache.value.get(peerId)
-  }
-  
-  console.log(`  🔍 [DEBUG] Поиск активных соединений для peer_id=${peerId}...`)
-  
-  try {
-    // Сначала ищем по from_peer
-    let response = await listAudit({ 
+    const response = await listAudit({ 
       page: 1, 
-      page_size: 50,
-      from_peer: peerId
+      page_size: 100
     })
     
-    let activeConnections = []
-    
+    const activeConnections = []
     if (response.code === 0 && response.data && response.data.list) {
-      console.log(`  📋 [DEBUG] Найдено ${response.data.list.length} записей по from_peer`)
-      
       for (const record of response.data.list) {
-        const isActive = (record.action === 'new' && (record.close_time === 0 || record.close_time === '0'))
-        
-        console.log(`    📊 record: action=${record.action}, close_time=${record.close_time}, peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
-        console.log(`       isActive=${isActive}`)
-        
-        if (isActive) {
-          console.log(`    ✅ [DEBUG] Активное соединение (from_peer): peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
+        if (record.action === 'new' && (record.close_time === 0 || record.close_time === '0')) {
           activeConnections.push({
-            peer_id: record.from_peer,
+            peer_id: record.peer_id,
             from_peer: record.from_peer,
             from_name: record.from_name || '-',
             from_ip: record.ip || '-',
@@ -266,83 +220,12 @@ const fetchActiveAuditByPeerId = async (peerId) => {
         }
       }
     }
-    
-    // Если не нашли по from_peer, ищем по peer_id
-    if (activeConnections.length === 0) {
-      console.log(`  🔍 [DEBUG] Не найдено по from_peer, ищем по peer_id...`)
-      response = await listAudit({ 
-        page: 1, 
-        page_size: 50,
-        peer_id: peerId
-      })
-      
-      if (response.code === 0 && response.data && response.data.list) {
-        console.log(`  📋 [DEBUG] Найдено ${response.data.list.length} записей по peer_id`)
-        
-        for (const record of response.data.list) {
-          const isActive = (record.action === 'new' && (record.close_time === 0 || record.close_time === '0'))
-          
-          console.log(`    📊 record: action=${record.action}, close_time=${record.close_time}, peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
-          console.log(`       isActive=${isActive}`)
-          
-          if (isActive) {
-            console.log(`    ✅ [DEBUG] Активное соединение (peer_id): peer_id=${record.peer_id}, from_peer=${record.from_peer}, created_at=${record.created_at}`)
-            activeConnections.push({
-              peer_id: record.peer_id,
-              from_peer: record.from_peer,
-              from_name: record.from_name || '-',
-              from_ip: record.ip || '-',
-              uuid: record.uuid || '-',
-              created_at: record.created_at || '-'
-            })
-          }
-        }
-      }
-    }
-    
-    console.log(`  ✅ [DEBUG] Всего активных соединений для peer_id=${peerId}: ${activeConnections.length}`)
-    auditCache.value.set(peerId, activeConnections)
+    console.log(`✅ [DEBUG] Всего активных соединений в аудите: ${activeConnections.length}`)
     return activeConnections
   } catch (error) {
-    console.error(`  ❌ [DEBUG] Ошибка получения аудита для peer_id=${peerId}:`, error)
+    console.error('Error fetching active audit:', error)
+    return []
   }
-  return []
-}
-
-// Сопоставление соединения из usage с активным аудитом
-const matchWithAudit = (ip, secondsAgo, possiblePeers, currentTime) => {
-  const expectedTime = currentTime - secondsAgo * 1000
-  const TIME_TOLERANCE = 30000
-  
-  let bestMatch = null
-  let minDiff = Infinity
-  
-  for (const peer of possiblePeers) {
-    const peerId = peer.peer_id
-    const activeConnections = auditCache.value.get(peerId) || []
-    
-    for (const conn of activeConnections) {
-      if (conn.created_at && conn.created_at !== '-') {
-        const connTime = new Date(conn.created_at).getTime()
-        const diff = Math.abs(connTime - expectedTime)
-        
-        if (diff < minDiff && diff < TIME_TOLERANCE) {
-          minDiff = diff
-          bestMatch = {
-            peer_id: peerId,
-            hostname: peer.hostname,
-            from_peer: conn.from_peer,
-            from_name: conn.from_name,
-            from_ip: conn.from_ip,
-            uuid: conn.uuid,
-            created_at: conn.created_at
-          }
-        }
-      }
-    }
-  }
-  
-  return bestMatch
 }
 
 // Получение активных соединений через команду usage
@@ -350,6 +233,9 @@ const fetchUsage = async () => {
   try {
     const currentTime = await getServerTime()
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
+    
+    // Получаем все активные соединения из аудита
+    const activeAudit = await fetchAllActiveAudit()
     
     if (res && res.data) {
       const lines = res.data.split('\n').filter(line => line.trim())
@@ -379,34 +265,22 @@ const fetchUsage = async () => {
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
         
-        const possiblePeers = peersByExternalIp.value.get(ip) || []
+        const expectedTime = currentTime - secondsAgo * 1000
+        const TIME_TOLERANCE = 30000
         
-        let peerId = '-'
-        let hostname = '-'
-        let fromPeer = '-'
-        let fromName = '-'
-        let fromIp = '-'
-        let uuid = '-'
-        let createdAt = '-'
+        // Ищем соответствующую запись в аудите по времени
+        let match = null
+        let minDiff = Infinity
         
-        if (possiblePeers.length > 0) {
-          for (const peer of possiblePeers) {
-            await fetchActiveAuditByPeerId(peer.peer_id)
-          }
-          
-          const match = matchWithAudit(ip, secondsAgo, possiblePeers, currentTime)
-          
-          if (match) {
-            peerId = match.peer_id
-            hostname = match.hostname
-            fromPeer = match.from_peer
-            fromName = match.from_name
-            fromIp = match.from_ip
-            uuid = match.uuid
-            createdAt = match.created_at
-          } else if (possiblePeers.length === 1) {
-            peerId = possiblePeers[0].peer_id
-            hostname = possiblePeers[0].hostname
+        for (const audit of activeAudit) {
+          if (audit.created_at && audit.created_at !== '-') {
+            const auditTime = new Date(audit.created_at).getTime()
+            const diff = Math.abs(auditTime - expectedTime)
+            
+            if (diff < minDiff && diff < TIME_TOLERANCE) {
+              minDiff = diff
+              match = audit
+            }
           }
         }
         
@@ -414,13 +288,13 @@ const fetchUsage = async () => {
           full_id: fullId,
           ip: ip,
           port: port,
-          peer_id: peerId,
-          hostname: hostname,
-          from_peer: fromPeer,
-          from_name: fromName,
-          from_ip: fromIp,
-          uuid: uuid,
-          created_at: createdAt,
+          peer_id: match?.peer_id || '-',
+          hostname: match?.hostname || '-',
+          from_peer: match?.from_peer || '-',
+          from_name: match?.from_name || '-',
+          from_ip: match?.from_ip || '-',
+          uuid: match?.uuid || '-',
+          created_at: match?.created_at || '-',
           time: timeDisplay,
           total: totalValue,
           total_unit: totalUnit,
@@ -442,8 +316,6 @@ const getList = async () => {
   console.log('\n🔄 [DEBUG] ===== НАЧАЛО ОБНОВЛЕНИЯ ДАННЫХ =====')
   loading.value = true
   try {
-    auditCache.value.clear()
-    await fetchPeersList()
     await fetchUsage()
     ElMessage.success(T('DataUpdated'))
     console.log('✅ [DEBUG] ===== ОБНОВЛЕНИЕ ЗАВЕРШЕНО =====\n')
