@@ -205,7 +205,7 @@ const getServerTime = async () => {
   return Date.now()
 }
 
-// Загрузка всех пиров для получения целевых IP
+// Загрузка всех пиров для получения целевых IP по peer_id
 const loadPeersCache = async () => {
   if (peersCache.value.size > 0) return
   
@@ -214,15 +214,30 @@ const loadPeersCache = async () => {
     if (response.code === 0 && response.data && response.data.list) {
       response.data.list.forEach(peer => {
         if (peer.id) {
-          // peer.id -> last_online_ip (внешний IP)
+          // peer.id -> last_online_ip (внешний IP устройства)
           peersCache.value.set(peer.id, peer.last_online_ip || peer.ip || '-')
+          console.log(`  📌 [DEBUG] Пир: ID=${peer.id}, IP=${peer.last_online_ip || peer.ip}`)
         }
       })
-      console.log(`✅ [DEBUG] Загружено ${peersCache.value.size} пиров для определения целевых IP`)
+      console.log(`✅ [DEBUG] Загружено ${peersCache.value.size} пиров`)
     }
   } catch (error) {
     console.error('Error loading peers cache:', error)
   }
+}
+
+// Получение целевого IP по peer_id из таблицы peers
+const fetchTargetIpByPeerId = async (peerId) => {
+  if (!peerId || peerId === '-') return '-'
+  
+  // Проверяем кэш
+  if (peersCache.value.has(peerId)) {
+    return peersCache.value.get(peerId)
+  }
+  
+  // Если нет в кэше, загружаем
+  await loadPeersCache()
+  return peersCache.value.get(peerId) || '-'
 }
 
 // Получение всех активных соединений из аудита
@@ -330,7 +345,7 @@ const fetchUsage = async () => {
         // Шаг 4: Получаем целевой IP по peer_id из таблицы peers
         let targetIp = '-'
         if (match && match.peer_id && match.peer_id !== '-') {
-          targetIp = peersCache.value.get(match.peer_id) || '-'
+          targetIp = await fetchTargetIpByPeerId(match.peer_id)
           console.log(`  🎯 [DEBUG] Для peer_id=${match.peer_id} найден целевой IP: ${targetIp}`)
         }
         
