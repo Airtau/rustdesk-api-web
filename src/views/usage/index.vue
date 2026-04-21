@@ -28,6 +28,12 @@
             :min-width="col.width" 
           />
           <el-table-column 
+            v-else-if="col.name === 'target_ip'" 
+            prop="target_ip" 
+            :label="T('TargetIP')" 
+            :min-width="col.width" 
+          />
+          <el-table-column 
             v-else-if="col.name === 'peer_id'" 
             prop="peer_id" 
             :label="T('Peer')" 
@@ -149,6 +155,7 @@ import { T } from '@/utils/i18n'
 import { sendCmd } from '@/api/rustdesk'
 import { RELAY_TARGET } from '@/views/rustdesk/options'
 import { list as listAudit } from '@/api/audit'
+import { list as listPeers } from '@/api/peer'
 
 const loading = ref(false)
 const displayList = ref([])
@@ -158,6 +165,7 @@ const columnSettingVisible = ref(false)
 const allColumns = ref([
   { name: 'ip', visible: true, label: 'IP', width: 120 },
   { name: 'port', visible: true, label: 'Port', width: 80 },
+  { name: 'target_ip', visible: true, label: 'TargetIP', width: 120 },
   { name: 'peer_id', visible: true, label: 'Peer', width: 100 },
   { name: 'hostname', visible: true, label: 'Hostname', width: 150 },
   { name: 'from_peer', visible: true, label: 'FromPeer', width: 100 },
@@ -175,8 +183,8 @@ const allColumns = ref([
 // Видимые колонки
 const visibleColumns = ref([])
 
-// Кэш активных соединений из аудита
-const auditCache = ref(new Map())
+// Кэш пиров (peer_id -> IP)
+const peersCache = ref(new Map())
 
 const formatSpeed = (speedStr) => {
   if (!speedStr) return 0
@@ -197,8 +205,31 @@ const getServerTime = async () => {
   return Date.now()
 }
 
-// Получение всех активных соединений из аудита (action='new' AND close_time=0)
-const fetchAllActiveAudit = async () => {
+// Шаг 4: Получение IP по peer_id из таблицы peers
+const fetchPeerIp = async (peerId) => {
+  if (peersCache.value.has(peerId)) {
+    return peersCache.value.get(peerId)
+  }
+  
+  try {
+    const response = await listPeers({ page: 1, page_size: 1000 })
+    if (response.code === 0 && response.data && response.data.list) {
+      response.data.list.forEach(peer => {
+        if (peer.id) {
+          // Сохраняем last_online_ip как целевой IP
+          peersCache.value.set(peer.id, peer.last_online_ip || peer.ip || '-')
+        }
+      })
+    }
+    return peersCache.value.get(peerId) || '-'
+  } catch (error) {
+    console.error('Error fetching peers:', error)
+    return '-'
+  }
+}
+
+// Получение всех активных соединений из аудита
+const fetchActiveAudit = async () => {
   try {
     const response = await listAudit({ 
       page: 1, 
@@ -208,6 +239,7 @@ const fetchAllActiveAudit = async () => {
     const activeConnections = []
     if (response.code === 0 && response.data && response.data.list) {
       for (const record of response.data.list) {
+        // Активные соединения: action='new' и close_time=0
         if (record.action === 'new' && (record.close_time === 0 || record.close_time === '0')) {
           activeConnections.push({
             peer_id: record.peer_id,
@@ -234,8 +266,8 @@ const fetchUsage = async () => {
     const currentTime = await getServerTime()
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
     
-    // Получаем все активные соединения из аудита
-    const activeAudit = await fetchAllActiveAudit()
+    // Шаг 1: Получаем активные соединения из аудита
+    const activeAudit = await fetchActiveAudit()
     
     if (res && res.data) {
       const lines = res.data.split('\n').filter(line => line.trim())
@@ -244,6 +276,7 @@ const fetchUsage = async () => {
       for (const line of lines) {
         const parts = line.trim().split(/\s+/)
         
+        // Парсим IP и порт из usage
         let fullId = parts[0] || '-'
         let cleanIp = fullId.replace(/^::ffff:/, '')
         cleanIp = cleanIp.replace(/:$/, '')
@@ -257,10 +290,12 @@ const fetchUsage = async () => {
           port = cleanIp.substring(lastColon + 1)
         }
         
+        // Время в секундах
         let timeStr = parts[1] || '0'
         const secondsAgo = parseInt(timeStr.replace(/s$/, ''))
         let timeDisplay = secondsAgo + ' сек'
         
+        // Объём данных
         let total = parts[2] || '0'
         const totalValue = parseFloat(total)
         const totalUnit = total.includes('MB') ? 'MB' : (total.includes('KB') ? 'KB' : 'B')
@@ -268,26 +303,54 @@ const fetchUsage = async () => {
         const expectedTime = currentTime - secondsAgo * 1000
         const TIME_TOLERANCE = 30000
         
-        // Ищем соответствующую запись в аудите по времени
+        // Шаг 2-3: Ищем в аудите по IP и сопоставляем по времени
         let match = null
         let minDiff = Infinity
         
-        for (const audit of activeAudit) {
-          if (audit.created_at && audit.created_at !== '-') {
-            const auditTime = new Date(audit.created_at).getTime()
-            const diff = Math.abs(auditTime - expectedTime)
-            
-            if (diff < minDiff && diff < TIME_TOLERANCE) {
-              minDiff = diff
-              match = audit
+        // Сначала ищем записи с таким же IP
+        const matchesByIp = activeAudit.filter(a => a.from_ip === ip || a.from_ip === cleanIp)
+        
+        if (matchesByIp.length > 0) {
+          // Сопоставляем по времени
+          for (const audit of matchesByIp) {
+            if (audit.created_at && audit.created_at !== '-') {
+              const auditTime = new Date(audit.created_at).getTime()
+              const diff = Math.abs(auditTime - expectedTime)
+              
+              if (diff < minDiff && diff < TIME_TOLERANCE) {
+                minDiff = diff
+                match = audit
+              }
             }
           }
+        }
+        
+        // Если не нашли по IP, ищем по всем активным записям
+        if (!match) {
+          for (const audit of activeAudit) {
+            if (audit.created_at && audit.created_at !== '-') {
+              const auditTime = new Date(audit.created_at).getTime()
+              const diff = Math.abs(auditTime - expectedTime)
+              
+              if (diff < minDiff && diff < TIME_TOLERANCE) {
+                minDiff = diff
+                match = audit
+              }
+            }
+          }
+        }
+        
+        // Шаг 4: Получаем целевой IP по peer_id из таблицы peers
+        let targetIp = '-'
+        if (match && match.peer_id && match.peer_id !== '-') {
+          targetIp = await fetchPeerIp(match.peer_id)
         }
         
         connections.push({
           full_id: fullId,
           ip: ip,
           port: port,
+          target_ip: targetIp,
           peer_id: match?.peer_id || '-',
           hostname: match?.hostname || '-',
           from_peer: match?.from_peer || '-',
