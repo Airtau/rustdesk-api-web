@@ -154,8 +154,7 @@ import { Setting, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { T } from '@/utils/i18n'
 import { sendCmd } from '@/api/rustdesk'
 import { RELAY_TARGET } from '@/views/rustdesk/options'
-import { list as listAudit } from '@/api/audit'
-import { list as listPeers } from '@/api/peer'
+import { listActive } from '@/api/audit'
 
 const loading = ref(false)
 const displayList = ref([])
@@ -183,9 +182,6 @@ const allColumns = ref([
 // Видимые колонки
 const visibleColumns = ref([])
 
-// Кэш пиров (peer_id -> IP)
-const peersCache = ref(new Map())
-
 const formatSpeed = (speedStr) => {
   if (!speedStr) return 0
   return parseFloat(speedStr)
@@ -205,69 +201,21 @@ const getServerTime = async () => {
   return Date.now()
 }
 
-// Загрузка всех пиров для получения целевых IP по peer_id
-const loadPeersCache = async () => {
-  if (peersCache.value.size > 0) return
-  
-  try {
-    const response = await listPeers({ page: 1, page_size: 1000 })
-    if (response.code === 0 && response.data && response.data.list) {
-      response.data.list.forEach(peer => {
-        if (peer.id) {
-          // peer.id -> last_online_ip (внешний IP устройства)
-          peersCache.value.set(peer.id, peer.last_online_ip || peer.ip || '-')
-          console.log(`  📌 [DEBUG] Пир: ID=${peer.id}, IP=${peer.last_online_ip || peer.ip}`)
-        }
-      })
-      console.log(`✅ [DEBUG] Загружено ${peersCache.value.size} пиров`)
-    }
-  } catch (error) {
-    console.error('Error loading peers cache:', error)
-  }
-}
-
-// Получение целевого IP по peer_id из таблицы peers
-const fetchTargetIpByPeerId = async (peerId) => {
-  if (!peerId || peerId === '-') return '-'
-  
-  // Проверяем кэш
-  if (peersCache.value.has(peerId)) {
-    return peersCache.value.get(peerId)
-  }
-  
-  // Если нет в кэше, загружаем
-  await loadPeersCache()
-  return peersCache.value.get(peerId) || '-'
-}
-
-// Получение всех активных соединений из аудита
+// Получение всех активных соединений из аудита (с данными из peers)
 const fetchActiveAudit = async () => {
   try {
-    const response = await listAudit({ 
+    const response = await listActive({ 
       page: 1, 
       page_size: 100
     })
     
-    const activeConnections = []
     if (response.code === 0 && response.data && response.data.list) {
-      for (const record of response.data.list) {
-        // Активные соединения: action='new' и close_time=0
-        if (record.action === 'new' && (record.close_time === 0 || record.close_time === '0')) {
-          activeConnections.push({
-            peer_id: record.peer_id,
-            from_peer: record.from_peer,
-            from_name: record.from_name || '-',
-            from_ip: record.ip || '-',
-            uuid: record.uuid || '-',
-            created_at: record.created_at || '-'
-          })
-        }
-      }
+      console.log(`✅ [DEBUG] Всего активных соединений: ${response.data.list.length}`)
+      return response.data.list
     }
-    console.log(`✅ [DEBUG] Всего активных соединений в аудите: ${activeConnections.length}`)
-    return activeConnections
+    return []
   } catch (error) {
-    console.error('Error fetching active audit:', error)
+    console.error('Error fetching active connections:', error)
     return []
   }
 }
@@ -278,11 +226,8 @@ const fetchUsage = async () => {
     const currentTime = await getServerTime()
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
     
-    // Шаг 1: Получаем активные соединения из аудита
+    // Загружаем активные соединения из аудита
     const activeAudit = await fetchActiveAudit()
-    
-    // Загружаем всех пиров для получения целевых IP
-    await loadPeersCache()
     
     if (res && res.data) {
       const lines = res.data.split('\n').filter(line => line.trim())
@@ -318,42 +263,37 @@ const fetchUsage = async () => {
         const expectedTime = currentTime - secondsAgo * 1000
         const TIME_TOLERANCE = 1000 // 1 секунда
         
-        // Шаг 2-3: Ищем в аудите по IP и сопоставляем по времени
+        // Сопоставляем с активными соединениями из аудита по from_ip и времени
         let match = null
         let minDiff = Infinity
         
-        // Ищем записи с таким же IP (from_ip)
-        const matchesByIp = activeAudit.filter(a => a.from_ip === ip || a.from_ip === cleanIp)
-        
-        for (const audit of matchesByIp) {
-          if (audit.created_at && audit.created_at !== '-') {
-            const auditTime = new Date(audit.created_at).getTime()
-            const diff = Math.abs(auditTime - expectedTime)
-            
-            if (diff < minDiff && diff < TIME_TOLERANCE) {
-              minDiff = diff
-              match = audit
-              console.log(`  ✅ [DEBUG] Найдено совпадение! diff=${diff}ms, expectedTime=${new Date(expectedTime).toLocaleString()}, auditTime=${audit.created_at}`)
+        for (const audit of activeAudit) {
+          // Проверяем совпадение по from_ip (IP отправителя)
+          if (audit.from_ip === ip) {
+            if (audit.created_at && audit.created_at !== '-') {
+              const auditTime = new Date(audit.created_at).getTime()
+              const diff = Math.abs(auditTime - expectedTime)
+              console.log(`📊 Сравнение: audit.created_at=${audit.created_at}, expectedTime=${new Date(expectedTime).toLocaleString()}, diff=${diff}ms`)
+              
+              if (diff < minDiff && diff < TIME_TOLERANCE) {
+                minDiff = diff
+                match = audit
+              }
             }
           }
         }
         
-        if (!match) {
-          console.log(`  ⚠️ [DEBUG] Совпадение НЕ найдено для IP=${ip}, expectedTime=${new Date(expectedTime).toLocaleString()}`)
-        }
-        
-        // Шаг 4: Получаем целевой IP по peer_id из таблицы peers
-        let targetIp = '-'
-        if (match && match.peer_id && match.peer_id !== '-') {
-          targetIp = await fetchTargetIpByPeerId(match.peer_id)
-          console.log(`  🎯 [DEBUG] Для peer_id=${match.peer_id} найден целевой IP: ${targetIp}`)
+        if (match) {
+          console.log(`  ✅ [DEBUG] Найдено совпадение! IP=${ip}, time=${secondsAgo}с, created_at=${match.created_at}, diff=${minDiff}ms`)
+        } else {
+          console.log(`  ⚠️ [DEBUG] Совпадение НЕ найдено для IP=${ip}, time=${secondsAgo}с`)
         }
         
         connections.push({
           full_id: fullId,
           ip: ip,
           port: port,
-          target_ip: targetIp,
+          target_ip: match?.target_ip || '-',
           peer_id: match?.peer_id || '-',
           hostname: match?.hostname || '-',
           from_peer: match?.from_peer || '-',
