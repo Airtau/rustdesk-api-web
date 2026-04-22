@@ -1,3 +1,152 @@
+<template>
+  <div class="usage-container">
+    <el-card class="usage-card" shadow="hover" v-loading="loading">
+      <template #header>
+        <div class="card-header">
+          <span>{{ T('ActiveConnections') }}</span>
+          <div class="header-actions">
+            <el-button :icon="Setting" @click="showColumnSetting"></el-button>
+            <el-button type="primary" @click="getList">
+              {{ T('Refresh') }}
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <el-table :data="displayList" size="small" border stripe v-loading="loading">
+        <template v-for="col in visibleColumns.filter(c => c.visible)" :key="col.name">
+          <el-table-column
+            v-if="col.name === 'ip'"
+            prop="ip"
+            :label="T('IP')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'port'"
+            prop="port"
+            :label="T('Port')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'target_ip'"
+            prop="target_ip"
+            :label="T('TargetIP')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'peer_id'"
+            prop="peer_id"
+            :label="T('Peer')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'hostname'"
+            prop="hostname"
+            :label="T('Hostname')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'from_peer'"
+            prop="from_peer"
+            :label="T('FromPeer')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'from_name'"
+            prop="from_name"
+            :label="T('FromName')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'from_ip'"
+            prop="from_ip"
+            :label="T('FromIP')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'uuid'"
+            prop="uuid"
+            :label="T('Uuid')"
+            :min-width="col.width"
+            show-overflow-tooltip
+          />
+          <el-table-column
+            v-else-if="col.name === 'time'"
+            prop="time"
+            :label="T('Time')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'created_at'"
+            prop="created_at"
+            :label="T('CreatedAt')"
+            :min-width="col.width"
+          />
+          <el-table-column
+            v-else-if="col.name === 'total'"
+            prop="total"
+            :label="T('Total')"
+            :min-width="col.width"
+          >
+            <template #default="{ row }">
+              {{ row.total }} {{ row.total_unit }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-else-if="col.name === 'max_speed'"
+            prop="max_speed"
+            :label="T('MaxSpeed')"
+            :min-width="col.width"
+          >
+            <template #default="{ row }">
+              {{ row.max_speed }} kb/s
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-else-if="col.name === 'avg_speed'"
+            prop="avg_speed"
+            :label="T('AvgSpeed')"
+            :min-width="col.width"
+          >
+            <template #default="{ row }">
+              {{ row.avg_speed }} kb/s
+            </template>
+          </el-table-column>
+          <el-table-column
+            v-else-if="col.name === 'current_speed'"
+            prop="current_speed"
+            :label="T('CurrentSpeed')"
+            :min-width="col.width"
+          >
+            <template #default="{ row }">
+              {{ row.current_speed }} kb/s
+            </template>
+          </el-table-column>
+        </template>
+      </el-table>
+    </el-card>
+
+    <!-- Диалог настройки колонок -->
+    <el-dialog v-model="columnSettingVisible" :title="T('ColumnSetting')" width="500">
+      <div v-for="(col, index) in allColumns" :key="col.name" style="margin-bottom: 10px; display: flex; align-items: center">
+        <div style="width: 150px">
+          <el-checkbox v-model="col.visible">{{ T(col.label) }}</el-checkbox>
+        </div>
+        <div @click="upColumn(index)" style="width: 50px; cursor: pointer">
+          <el-icon><ArrowUp /></el-icon>
+        </div>
+        <div @click="downColumn(index)" style="width: 50px; cursor: pointer">
+          <el-icon><ArrowDown /></el-icon>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="columnSettingVisible = false">{{ T('Cancel') }}</el-button>
+        <el-button type="primary" @click="saveColumnSetting">{{ T('Save') }}</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
