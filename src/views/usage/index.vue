@@ -438,3 +438,29 @@ onMounted(() => {
   getList()
 })
 </script>
+
+<style scoped lang="scss">
+.usage-container {
+  padding: 20px;
+}
+
+.usage-card {
+  width: 100%;
+  margin: 0;
+  
+  :deep(.el-table) {
+    width: 100%;
+  }
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+</style>
