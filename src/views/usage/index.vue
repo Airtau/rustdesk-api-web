@@ -240,7 +240,7 @@ const fetchUsage = async () => {
   try {
     const currentTime = await getServerTime()
     console.log(`🕐 [DEBUG] Current timestamp: ${currentTime}`)
-    
+
     const res = await sendCmd({ cmd: 'u', target: RELAY_TARGET })
 
     // Получаем активные соединения из аудита
@@ -250,7 +250,7 @@ const fetchUsage = async () => {
       const lines = res.data.split('\n').filter(line => line.trim())
       console.log(`📡 [DEBUG] Usage command output:\n${res.data}`)
       console.log(`📊 [DEBUG] Total usage lines: ${lines.length}`)
-      
+
       const connections = []
 
       for (const line of lines) {
@@ -274,11 +274,11 @@ const fetchUsage = async () => {
         let timeStr = parts[1] || '0'
         const secondsAgo = parseInt(timeStr.replace(/s$/, ''))
         let timeDisplay = secondsAgo + ' сек'
-        
+
         // Вычисляем ожидаемое время начала
         const expectedTime = currentTime - secondsAgo * 1000
         const expectedTimeStr = new Date(expectedTime).toLocaleString()
-        
+
         console.log(`\n🔍 [DEBUG] === Анализ соединения ===`)
         console.log(`  📍 IP:Port: ${ip}:${port}`)
         console.log(`  ⏱️  secondsAgo: ${secondsAgo} сек (${Math.floor(secondsAgo/60)} мин ${secondsAgo%60} сек)`)
@@ -293,56 +293,60 @@ const fetchUsage = async () => {
         const TIME_TOLERANCE = 30000 // Увеличил до 30 секунд для лучшего сопоставления
         console.log(`  ⚙️  Time tolerance: ${TIME_TOLERANCE} ms (${TIME_TOLERANCE/1000} sec)`)
 
-        // Сопоставляем с активными соединениями из аудита по from_ip и времени
-        let match = null
-        let minDiff = Infinity
-        let bestMatchTime = null
+	// Сопоставляем с активными соединениями из аудита по from_ip и времени
+	let match = null
+	let minDiff = Infinity
+	let bestMatchTime = null
 
-        const matchingByIp = activeAudit.filter(a => a.from_ip === ip)
-        console.log(`  🔎 Found ${matchingByIp.length} API records with from_ip=${ip}`)
+	const matchingByIp = activeAudit.filter(a => (a.from_ip === ip) || (a.target_ip === ip))
+	console.log(`  🔎 Found ${matchingByIp.length} API records with IP match (from_ip=${ip} OR target_ip=${ip})`)
 
-        for (const audit of activeAudit) {
-          // Проверяем совпадение по from_ip (IP отправителя)
-          if (audit.from_ip === ip) {
-            if (audit.created_at && audit.created_at !== '-') {
-              const auditTime = new Date(audit.created_at).getTime()
-              const diff = Math.abs(auditTime - expectedTime)
-              const diffSeconds = Math.floor(diff / 1000)
-              
-              console.log(`    📝 Comparing with API record:`)
-              console.log(`      - created_at: ${audit.created_at}`)
-              console.log(`      - audit timestamp: ${auditTime}`)
-              console.log(`      - diff: ${diff} ms (${diffSeconds} sec)`)
-              console.log(`      - within tolerance: ${diff < TIME_TOLERANCE ? '✅ YES' : '❌ NO'}`)
+	for (const audit of activeAudit) {
+	  // Проверяем совпадение по from_ip ИЛИ target_ip
+	  const ipMatches = (audit.from_ip === ip) || (audit.target_ip === ip);
 
-              if (diff < minDiff && diff < TIME_TOLERANCE) {
-                minDiff = diff
-                match = audit
-                bestMatchTime = audit.created_at
-                console.log(`      ✨ NEW BEST MATCH! diff=${diff}ms`)
-              }
-            } else {
-              console.log(`    ⚠️ API record has empty created_at, skipping`)
-            }
-          }
-        }
+	  if (ipMatches) {
+	    if (audit.created_at && audit.created_at !== '-') {
+	      const auditTime = new Date(audit.created_at).getTime()
+	      const diff = Math.abs(auditTime - expectedTime)
+	      const diffSeconds = Math.floor(diff / 1000)
 
-        if (match) {
-          const matchDiffSeconds = Math.floor(minDiff / 1000)
-          console.log(`  ✅ MATCH FOUND!`)
-          console.log(`    - API created_at: ${bestMatchTime}`)
-          console.log(`    - Expected time: ${expectedTimeStr}`)
-          console.log(`    - Difference: ${minDiff} ms (${matchDiffSeconds} sec)`)
-          console.log(`    - Peer ID: ${match.peer_id}`)
-          console.log(`    - Hostname: ${match.hostname}`)
-        } else {
-          console.log(`  ❌ NO MATCH FOUND for IP=${ip}, time=${secondsAgo}s`)
-          if (matchingByIp.length === 0) {
-            console.log(`    - No API records with this IP`)
-          } else {
-            console.log(`    - Found ${matchingByIp.length} records with this IP, but time mismatch > ${TIME_TOLERANCE/1000} sec`)
-          }
-        }
+	      console.log(`    📝 Comparing with API record:`)
+	      console.log(`      - created_at: ${audit.created_at}`)
+	      console.log(`      - from_ip: ${audit.from_ip}, target_ip: ${audit.target_ip}`)
+	      console.log(`      - audit timestamp: ${auditTime}`)
+	      console.log(`      - diff: ${diff} ms (${diffSeconds} sec)`)
+	      console.log(`      - within tolerance: ${diff < TIME_TOLERANCE ? '✅ YES' : '❌ NO'}`)
+
+	      if (diff < minDiff && diff < TIME_TOLERANCE) {
+		minDiff = diff
+		match = audit
+		bestMatchTime = audit.created_at
+		console.log(`      ✨ NEW BEST MATCH! diff=${diff}ms`)
+	      }
+	    } else {
+	      console.log(`    ⚠️ API record has empty created_at, skipping`)
+	    }
+	  }
+	}
+
+	if (match) {
+	  const matchDiffSeconds = Math.floor(minDiff / 1000)
+	  console.log(`  ✅ MATCH FOUND!`)
+	  console.log(`    - API created_at: ${bestMatchTime}`)
+	  console.log(`    - Expected time: ${expectedTimeStr}`)
+	  console.log(`    - Difference: ${minDiff} ms (${matchDiffSeconds} sec)`)
+	  console.log(`    - Peer ID: ${match.peer_id}`)
+	  console.log(`    - Hostname: ${match.hostname}`)
+	  console.log(`    - Match type: ${match.from_ip === ip ? 'from_ip' : 'target_ip'}`)
+	} else {
+	  console.log(`  ❌ NO MATCH FOUND for IP=${ip}, time=${secondsAgo}s`)
+	  if (matchingByIp.length === 0) {
+	    console.log(`    - No API records with from_ip=${ip} or target_ip=${ip}`)
+	  } else {
+	    console.log(`    - Found ${matchingByIp.length} records with matching IP, but time mismatch > ${TIME_TOLERANCE/1000} sec`)
+	  }
+	}
 
         connections.push({
           full_id: fullId,
@@ -365,7 +369,7 @@ const fetchUsage = async () => {
         })
       }
       displayList.value = connections
-      
+
       const matchedCount = connections.filter(c => c.peer_id !== '-').length
       console.log(`\n✅ [DEBUG] Total connections processed: ${connections.length}`)
       console.log(`   └─ With matches: ${matchedCount}`)
@@ -447,7 +451,7 @@ onMounted(() => {
 .usage-card {
   width: 100%;
   margin: 0;
-  
+
   :deep(.el-table) {
     width: 100%;
   }
