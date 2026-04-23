@@ -177,20 +177,20 @@ const formatDuration = (seconds) => {
 
 // Все доступные колонки (без колонки ip)
 const allColumns = ref([
-  { name: 'port', visible: true, label: 'Port', width: 80 },
-  { name: 'target_ip', visible: true, label: 'TargetIP', width: 120 },
-  { name: 'peer_id', visible: true, label: 'Peer', width: 100 },
-  { name: 'hostname', visible: true, label: 'Hostname', width: 150 },
-  { name: 'from_peer', visible: true, label: 'FromPeer', width: 100 },
+  { name: 'created_at', visible: true, label: 'CreatedAt', width: 120 },
+  { name: 'target_ip', visible: true, label: 'IP', width: 100 },
+  { name: 'port', visible: true, label: 'Port', width: 60 },
+  { name: 'hostname', visible: true, label: 'Hostname', width: 120 },
+  { name: 'peer_id', visible: true, label: 'Peer', width: 90 },
+  { name: 'from_peer', visible: true, label: 'FromPeer', width: 90 },
   { name: 'from_name', visible: true, label: 'FromName', width: 150 },
-  { name: 'from_ip', visible: true, label: 'FromIP', width: 120 },
-  { name: 'uuid', visible: true, label: 'Uuid', width: 200 },
-  { name: 'time', visible: true, label: 'Time', width: 120 },
-  { name: 'created_at', visible: true, label: 'CreatedAt', width: 160 },
-  { name: 'total', visible: true, label: 'Total', width: 100 },
-  { name: 'max_speed', visible: true, label: 'MaxSpeed', width: 100 },
-  { name: 'avg_speed', visible: true, label: 'AvgSpeed', width: 100 },
-  { name: 'current_speed', visible: true, label: 'CurrentSpeed', width: 120 }
+  { name: 'from_ip', visible: true, label: 'FromIP', width: 100 },
+  { name: 'uuid', visible: false, label: 'Uuid', width: 300 },
+  { name: 'time', visible: true, label: 'Time', width: 150 },
+  { name: 'total', visible: true, label: 'Total', width: 90 },
+  { name: 'max_speed', visible: true, label: 'MaxSpeed', width: 90 },
+  { name: 'avg_speed', visible: true, label: 'AvgSpeed', width: 90 },
+  { name: 'current_speed', visible: true, label: 'CurrentSpeed', width: 90 }
 ])
 
 const visibleColumns = ref([])
