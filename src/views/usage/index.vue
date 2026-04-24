@@ -177,7 +177,7 @@ const formatDuration = (seconds) => {
 
 // Все доступные колонки (без колонки ip)
 const allColumns = ref([
-  { name: 'created_at', visible: true, label: 'CreatedAt', width: 120 },
+  { name: 'created_at', visible: true, label: 'CreatedAt', width: 150 },
   { name: 'target_ip', visible: true, label: 'IP', width: 100 },
   { name: 'port', visible: true, label: 'Port', width: 60 },
   { name: 'hostname', visible: true, label: 'Hostname', width: 120 },
